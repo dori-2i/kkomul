@@ -76,7 +76,11 @@ def parse_extra(raw):
             errors.append(f"기타치수는 '이름 숫자' 형식으로 적어 주세요: '{part}' (예: 밑둘레 26)")
             continue
         name, value = m.group(1).strip(" :="), float(m.group(2))
-        if len(name) > 20:
+        if re.search(r"[\d~\-]$", name) or "~" in name:
+            errors.append(f"기타치수에는 숫자를 하나만 적어 주세요: '{part}' "
+                          f"(범위라면 '{re.split(r'[\s\d~-]', name)[0] or '둘레'}최소 36, "
+                          f"{re.split(r'[\s\d~-]', name)[0] or '둘레'}최대 42'처럼 나눠서)")
+        elif len(name) > 20:
             errors.append(f"기타치수 이름이 너무 길어요: '{name}'")
         elif not 1 <= value <= 200:
             errors.append(f"기타치수 '{name}' 값은 1~200 사이여야 해요: {value}")
