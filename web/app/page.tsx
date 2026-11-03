@@ -1,5 +1,8 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { CATEGORY_LABEL, getProducts, type ProductCard } from "@/lib/products";
+import { kstMonthDay, won } from "@/lib/format";
+import ProductThumb from "./ProductThumb";
 
 export default function Home() {
   return (
@@ -50,41 +53,23 @@ async function ProductList() {
   );
 }
 
-const won = (n: number) => n.toLocaleString("ko-KR");
-
-// DB의 시각(세계 표준시로 옴)을 한국 날짜 MM/DD로 표시
-const kstMonthDay = (iso: string) => {
-  const parts = new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(iso));
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("month")}/${get("day")}`;
-};
-
 function ProductItem({ p }: { p: ProductCard }) {
   return (
     <article className="flex gap-4 rounded-2xl bg-white p-4 shadow-sm">
-      <div className="flex h-24 w-24 flex-none items-center justify-center overflow-hidden rounded-xl bg-[#F0E8FB] text-[#55309A]">
-        {p.imageUrl ? (
-          // 이미지 사용을 허락받은 브랜드만 표시 (brands.images_allowed)
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
-        ) : (
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
-            <path d="M8 3h8l4 4-3 2.5V13l-2 2v6H9v-6l-2-2V9.5L4 7z" />
-            <path d="M10 3a2 2 0 0 0 4 0" />
-          </svg>
-        )}
-      </div>
+      <Link href={`/products/${p.id}`} aria-label={`${p.name} 상세 보기`} className="flex-none">
+        <ProductThumb src={p.imageUrl} alt={p.name} />
+      </Link>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2 text-xs text-gray-600">
           {p.brand && <span className="font-semibold text-gray-800">{p.brand}</span>}
           <span>{CATEGORY_LABEL[p.category] ?? p.category}</span>
         </div>
-        <h3 className="line-clamp-2 text-sm font-medium leading-snug text-gray-900">{p.name}</h3>
+        <h3 className="line-clamp-2 text-sm font-medium leading-snug text-gray-900">
+          <Link href={`/products/${p.id}`} className="hover:underline">
+            {p.name}
+          </Link>
+        </h3>
 
         {p.lowest ? (
           <>
@@ -102,14 +87,12 @@ function ProductItem({ p }: { p: ProductCard }) {
                 {p.lowest.mall_name} · 가격 확인일 {kstMonthDay(p.lowest.collected_at)}
                 {p.mallCount > 1 && ` · ${p.mallCount}곳 비교`}
               </span>
-              <a
-                href={p.lowest.link}
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href={`/products/${p.id}`}
                 className="flex-none rounded-full bg-[#7B4BC4] px-3 py-2 text-xs font-bold text-white"
               >
-                보러 가기
-              </a>
+                사이즈 보기
+              </Link>
             </div>
           </>
         ) : (
