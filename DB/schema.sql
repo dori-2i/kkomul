@@ -114,10 +114,11 @@ create table products (
 );
 create index products_category_idx on products(category) where is_active;
 
--- 상품 이미지 (최대 10장, 1번이 대표. products.image_url과 같은 값)
+-- 상품 이미지 (최대 30장, 1번이 대표. products.image_url과 같은 값)
 create table product_images (
   product_id  bigint        not null references products(id) on delete cascade,
-  sort_order  smallint      not null check (sort_order between 1 and 10),
+  sort_order  smallint      not null
+              constraint product_images_sort_order_range check (sort_order between 1 and 30),
   url         varchar(1000) not null check (url ~ '^https?://'),
   created_at  timestamptz   not null default now(),
   primary key (product_id, sort_order),

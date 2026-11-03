@@ -92,7 +92,7 @@ def parse_extra(raw):
     return (result or None), errors
 
 SKU_RE = re.compile(r"^[A-Za-z0-9_-]{1,30}$")
-MAX_IMAGES = 10
+MAX_IMAGES = 30
 
 
 def split_links(raw):
