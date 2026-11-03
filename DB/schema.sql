@@ -159,8 +159,8 @@ create table size_charts (
   weight_min_kg  numeric(4,2),
   weight_max_kg  numeric(4,2),
   note           varchar(200),
-  month_min      smallint     check (month_min between 0 and 72),
-  month_max      smallint     check (month_max between 0 and 72),
+  month_min      smallint     constraint size_charts_month_min_range check (month_min between 0 and 144),
+  month_max      smallint     constraint size_charts_month_max_range check (month_max between 0 and 144),
   chest_cm       numeric(4,1) check (chest_cm   between 20 and 120),  -- 가슴둘레
   sleeve_cm      numeric(4,1) check (sleeve_cm  between 5  and 80),   -- 화장
   length_cm      numeric(4,1) check (length_cm  between 10 and 130),  -- 총장

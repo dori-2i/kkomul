@@ -226,8 +226,8 @@ def parse(path):
         for s in sizes:
             if len(s) > 10:
                 ck.err("상품", r, f"사이즈 표기가 너무 길어요: '{s}'")
-        m_min = ck.integer("상품", r, "추천시작개월", x["추천시작개월"], False, 0, 36)
-        m_max = ck.integer("상품", r, "추천종료개월", x["추천종료개월"], False, 0, 36)
+        m_min = ck.integer("상품", r, "추천시작개월", x["추천시작개월"], False, 0, 144)
+        m_max = ck.integer("상품", r, "추천종료개월", x["추천종료개월"], False, 0, 144)
         if m_min is not None and m_max is not None and m_min > m_max:
             ck.err("상품", r, "추천시작개월이 추천종료개월보다 커요.")
         checked = ck.date("상품", r, "가격확인일", x["가격확인일"])
@@ -272,12 +272,12 @@ def parse(path):
             ck.err("사이즈표", r, "사이즈를 10자 이내로 입력해 주세요.")
         elif "(" in size:
             ck.err("사이즈표", r, f"사이즈 칸에는 '{size.split('(')[0].strip()}'만 적고, 괄호 속 개월은 개월최소·개월최대 칸에 적어 주세요.")
-        m_min = ck.integer("사이즈표", r, "개월최소", x["개월최소"], False, 0, 72)
-        m_max = ck.integer("사이즈표", r, "개월최대", x["개월최대"], False, 0, 72)
+        m_min = ck.integer("사이즈표", r, "개월최소", x["개월최소"], False, 0, 144)
+        m_max = ck.integer("사이즈표", r, "개월최대", x["개월최대"], False, 0, 144)
         if m_min is not None and m_max is not None and m_min > m_max:
             ck.err("사이즈표", r, "개월최소가 개월최대보다 커요.")
-        h_min = ck.decimal("사이즈표", r, "키최소(cm)", x["키최소(cm)"], False, 30, 140)
-        h_max = ck.decimal("사이즈표", r, "키최대(cm)", x["키최대(cm)"], False, 30, 140)
+        h_min = ck.decimal("사이즈표", r, "키최소(cm)", x["키최소(cm)"], False, 30, 170)
+        h_max = ck.decimal("사이즈표", r, "키최대(cm)", x["키최대(cm)"], False, 30, 170)
         if h_min is not None and h_max is not None and h_min >= h_max:
             ck.err("사이즈표", r, "키최소가 키최대보다 작아야 해요.")
         w_min = ck.decimal("사이즈표", r, "몸무게최소(kg)", x["몸무게최소(kg)"], False, 1, 30)
