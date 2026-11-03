@@ -15,35 +15,44 @@
 
 - DB: PostgreSQL (Supabase, 서울 리전), 전 테이블 RLS 적용
 - 데이터 도구: Python (`psycopg`, `openpyxl`)
-- 웹 앱: Next.js (개발 예정), Vercel 배포 예정
+- 웹 앱: Next.js 16 + Tailwind CSS, Vercel 배포 예정
 
 ## 폴더 구조
 
 ```
 DB/        DB 스키마와 마이그레이션
 scripts/   엑셀 상품 양식을 DB에 올리는 스크립트
+web/       Next.js 웹 앱
 data/      상품·사이즈표 입력용 엑셀 양식
-docs/      기능 목록과 결정 기록
+feature_backlog.md   기능 목록과 결정 기록
 ```
 
 ## DB 설치 순서
 
-새 DB를 만들 때: `schema.sql` → `migration_002_points.sql` → `migration_003_engagement.sql`
+새 DB를 만들 때: `schema.sql` → `migration_002_points.sql` → `migration_003_engagement.sql` → `migration_012_public_read.sql`
 
-(`schema.sql`에는 migration_001, 004의 변경이 이미 반영되어 있습니다.)
+(`schema.sql`에는 migration_001, 004~011의 변경이 이미 반영되어 있습니다.)
 
 ## 상품 업로드
 
 ```powershell
 pip install "psycopg[binary]" openpyxl
-$env:DATABASE_URL="Supabase 연결 문자열"
 python scripts/upload_products.py data/상품목록.xlsx --dry-run   # 검사만
 python scripts/upload_products.py data/상품목록.xlsx             # 저장
 ```
 
-DB 비밀번호 등 비밀 정보는 코드나 저장소에 넣지 않고 환경변수로만 전달합니다.
+DB 연결 주소는 저장소 맨 위 `.env` 파일(`DATABASE_URL=...`)에 두며, `.gitignore`로 저장소에서 제외합니다.
+
+## 웹 앱 실행
+
+```powershell
+cd web
+npm install
+copy env.local.example .env.local   # 값 채우기
+npm run dev                          # http://localhost:3000
+```
 
 ## 진행 기록
 
-- 2026-11-03: 서비스 기획, 화면 시안, DB 설계(테이블 25개), 상품 업로드 도구
+- 2026-11-03: 서비스 기획, 화면 시안, DB 설계, 상품 업로드 도구, 사이즈 판정 로직, 웹 앱 상품 목록
 - 네이버 쇼핑 검색 API 종료(2026-07-31)에 따라 상품·가격은 직접 큐레이션 + 사용자 제보 방식으로 전환
