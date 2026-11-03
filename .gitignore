@@ -1,0 +1,13 @@
+# 비밀 정보 (DB 주소, API 키)
+.env
+.env.*
+
+# 파이썬 임시 파일
+__pycache__/
+
+# 상품을 적은 엑셀은 올리지 않고, 빈 양식만 올림
+data/*.xlsx
+!data/kkomul_products_template.xlsx
+
+# 엑셀이 열려 있을 때 생기는 임시 파일
+~$*
