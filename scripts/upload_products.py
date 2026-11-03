@@ -55,11 +55,20 @@ MEASURES = [
     ("옆기장(cm)",     "outseam_cm", 10, 100),
     ("머리둘레(cm)",   "head_cm",    25,  60),
 ]
+# 나중에 추가된 치수 칸: 엑셀에 이 머리글이 없어도 되고,
+# 기타치수에 같은 이름(예: '밑둘레 26')으로 적어도 이 칸으로 들어감
+COMMON_MEASURES = [
+    ("어깨너비(cm)", "shoulder_cm",    "어깨너비", 10,  60),
+    ("소매길이(cm)", "sleeve_len_cm",  "소매길이",  3,  80),
+    ("밑위길이(cm)", "rise_cm",        "밑위길이",  5,  60),
+    ("밑둘레(cm)",   "bottom_circ_cm", "밑둘레",   10, 120),
+]
+ALL_MEASURE_FIELDS = [m[1] for m in MEASURES] + [m[1] for m in COMMON_MEASURES]
 CHART_COLS = ["height_min_cm", "height_max_cm", "weight_min_kg", "weight_max_kg", "note",
-              "month_min", "month_max"] + [m[1] for m in MEASURES] + ["extra_measures"]
+              "month_min", "month_max"] + ALL_MEASURE_FIELDS + ["extra_measures"]
 
 # 없어도 되는 칸 (예전 양식에는 없음)
-OPTIONAL_SIZE_COLS = ["기타치수"]
+OPTIONAL_SIZE_COLS = ["기타치수"] + [m[0] for m in COMMON_MEASURES]
 
 # '밑둘레 26, 깊이:15cm' 같은 기타치수 한 조각
 EXTRA_RE = re.compile(r"^(.+?)\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(?:cm|센치|센티)?$", re.IGNORECASE)
@@ -290,10 +299,22 @@ def parse(path):
                "month_min": m_min, "month_max": m_max}
         for col, field, lo, hi in MEASURES:
             rec[field] = ck.decimal("사이즈표", r, col, x[col], False, lo, hi)
-        rec["extra_measures"], extra_errors = parse_extra(x.get("기타치수"))
+        extra, extra_errors = parse_extra(x.get("기타치수"))
         for e in extra_errors:
             ck.err("사이즈표", r, e)
-        if all(rec[f] is None for f in ["height_max_cm", "month_max", "extra_measures"] + [m[1] for m in MEASURES]):
+        extra = dict(extra or {})
+        for col, field, alias, lo, hi in COMMON_MEASURES:
+            val = ck.decimal("사이즈표", r, col, x.get(col), False, lo, hi)
+            if alias in extra:
+                moved = extra.pop(alias)
+                if val is not None and val != moved:
+                    ck.err("사이즈표", r, f"{alias}가 {col} 칸({val})과 기타치수({moved})에 다르게 적혀 있어요.")
+                elif not lo <= moved <= hi:
+                    ck.err("사이즈표", r, f"{alias}은(는) {lo}~{hi} 사이여야 해요: {moved}")
+                val = moved if val is None else val
+            rec[field] = val
+        rec["extra_measures"] = extra or None
+        if all(rec[f] is None for f in ["height_max_cm", "month_max", "extra_measures"] + ALL_MEASURE_FIELDS):
             ck.err("사이즈표", r, "키최대, 개월최대, 부위별 치수, 기타치수 중 하나는 적어 주세요.")
         charts.append(rec)
 

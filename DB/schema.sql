@@ -170,6 +170,10 @@ create table size_charts (
   hip_cm         numeric(4,1) check (hip_cm     between 20 and 120),  -- 엉덩이둘레
   outseam_cm     numeric(4,1) check (outseam_cm between 10 and 100),  -- 옆기장
   head_cm        numeric(4,1) check (head_cm    between 25 and 60),   -- 머리둘레
+  shoulder_cm    numeric(4,1) check (shoulder_cm    between 10 and 60),   -- 어깨너비
+  sleeve_len_cm  numeric(4,1) check (sleeve_len_cm  between 3  and 80),   -- 소매길이 (화장과 다름)
+  rise_cm        numeric(4,1) check (rise_cm        between 5  and 60),   -- 밑위길이
+  bottom_circ_cm numeric(4,1) check (bottom_circ_cm between 10 and 120),  -- 밑둘레
   extra_measures jsonb        check (extra_measures is null or jsonb_typeof(extra_measures) = 'object'),
                                                                        -- 기타 치수 {"밑둘레": 26}
   check ((brand_id is not null) <> (product_id is not null)),
@@ -178,24 +182,14 @@ create table size_charts (
     check (month_min is null or month_max is null or month_min <= month_max),
   constraint size_charts_has_measure
     check (num_nonnulls(height_max_cm, month_max, chest_cm, sleeve_cm, length_cm,
-                        waist_cm, hip_cm, outseam_cm, head_cm, extra_measures) > 0)
+                        waist_cm, hip_cm, outseam_cm, head_cm,
+                        shoulder_cm, sleeve_len_cm, rise_cm, bottom_circ_cm,
+                        extra_measures) > 0)
 );
 create unique index size_charts_brand_uq   on size_charts(brand_id, size_label)   where brand_id   is not null;
 create unique index size_charts_product_uq on size_charts(product_id, size_label) where product_id is not null;
 
--- 사이즈 판정 함수 (시안과 같은 기준: 여유 6cm 이하 딱, 13cm 이하 넉넉)
-create or replace function size_fit(baby_height numeric, size_max numeric)
-returns text
-language sql immutable
-as $$
-  select case
-    when baby_height is null or size_max is null then null
-    when baby_height > size_max                  then '작아요'
-    when size_max - baby_height <= 6             then '딱 맞아요'
-    when size_max - baby_height <= 13            then '넉넉해요'
-    else                                              '아직 너무 커요'
-  end
-$$;
+-- 사이즈 판정 함수(키 상한만 아는 간단 판정)와 상세 판정 함수는 아래 v_product_size_chart 다음에 정의
 
 -- 상품별 사이즈의 키 상한: 상품 전용표 → 브랜드 공통표 → 숫자 라벨 그대로(국내 표기 관례) 순서로 결정
 create view v_product_size_chart as
@@ -217,6 +211,74 @@ from product_sizes ps
 join products p on p.id = ps.product_id
 left join size_charts pc on pc.product_id = ps.product_id and pc.size_label = ps.size_label
 left join size_charts bc on bc.brand_id = p.brand_id and bc.size_label = ps.size_label;
+
+-- 기존 함수도 5cm 기준으로 (키 최대값만 아는 경우의 간단 판정)
+create or replace function size_fit(baby_height numeric, size_max numeric)
+returns text
+language sql immutable
+as $$
+  select case
+    when baby_height is null or size_max is null then null
+    when baby_height > size_max                  then '작아요'
+    when size_max - baby_height <= 5             then '딱 맞아요'
+    when size_max - baby_height <= 10            then '넉넉해요'
+    else                                              '아직 너무 커요'
+  end
+$$;
+
+-- 새 판정 함수
+--   verdict           : 작아요 / 딱 맞아요 / 넉넉해요 / 아직 너무 커요 (판정 불가면 null)
+--   basis             : brand_range(브랜드 키 범위로 판정) / max_only(키 상한으로 판정)
+--   brand_recommended : 아기 개월이 브랜드 권장 개월 안인지
+create or replace function size_verdict(p_month integer, p_height numeric,
+                                        p_hmin numeric, p_hmax numeric,
+                                        p_mmin integer, p_mmax integer)
+returns table (verdict text, basis text, brand_recommended boolean)
+language sql immutable
+as $$
+  with x as (
+    select coalesce(p_month between p_mmin and p_mmax, false) as rec
+  )
+  select
+    case
+      when p_height is null or p_hmax is null then null
+      when p_height > p_hmax then '작아요'
+      when p_hmin is not null and p_height >= p_hmin then '딱 맞아요'
+      when p_hmin is not null and p_hmin - p_height <= 5 then '넉넉해요'
+      when p_hmin is null and p_hmax - p_height <= 5 then '딱 맞아요'
+      when p_hmin is null and p_hmax - p_height <= 10 then '넉넉해요'
+      when x.rec then '넉넉해요'
+      else '아직 너무 커요'
+    end,
+    case
+      when p_height is null or p_hmax is null then null
+      when p_hmin is not null then 'brand_range'
+      else 'max_only'
+    end,
+    x.rec
+  from x
+$$;
+
+-- 상품 하나의 사이즈별 판정 (화면에서 바로 쓰는 함수)
+--   예: select * from product_size_fit(1, 6, 67.6);
+create or replace function product_size_fit(p_product bigint, p_month integer, p_height numeric)
+returns table (size_label varchar, in_stock boolean,
+               height_min_cm numeric, height_max_cm numeric,
+               month_min smallint, month_max smallint,
+               verdict text, basis text, brand_recommended boolean)
+language sql stable
+as $$
+  select v.size_label, v.in_stock,
+         c.height_min_cm, v.height_max_cm,
+         c.month_min, c.month_max,
+         s.verdict, s.basis, s.brand_recommended
+  from v_product_size_chart v
+  left join size_charts c on c.id = v.size_chart_id
+  cross join lateral size_verdict(p_month, p_height, c.height_min_cm, v.height_max_cm,
+                                  c.month_min, c.month_max) s
+  where v.product_id = p_product
+  order by v.height_max_cm nulls last, v.size_label
+$$;
 
 -- 상품별 현재 최저가 (판매처별 가장 최근 가격 중 최저가)
 create view v_product_lowest_price as
