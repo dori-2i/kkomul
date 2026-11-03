@@ -101,7 +101,8 @@ create table products (
   brand_id          bigint       references brands(id),
   name              varchar(200) not null,
   category          varchar(20)  not null
-                    check (category in ('bodysuit', 'romper', 'set', 'outer', 'legwear', 'acc', 'toy')),
+                    constraint products_category_check
+                    check (category in ('bodysuit', 'romper', 'set', 'top', 'outer', 'legwear', 'acc', 'toy')),
   sku               varchar(30)  not null unique, -- 우리가 정하는 상품코드 (예: P001)
   image_url         varchar(1000),
   list_price        integer      check (list_price >= 0),   -- 정가

@@ -32,6 +32,7 @@ CATEGORY = {
     "바디슈트": "bodysuit",
     "우주복": "romper",
     "상하복": "set",
+    "상의": "top",
     "아우터": "outer",
     "하의·양말": "legwear",
     "모자·소품": "acc",
