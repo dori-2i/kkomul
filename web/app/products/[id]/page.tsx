@@ -76,9 +76,9 @@ async function ProductDetail({ params }: { params: Promise<{ id: string }> }) {
                 <div className="flex flex-none items-center gap-3">
                   <span className="text-base font-bold text-gray-900">{won(pr.price)}원</span>
                   <a
-                    href={pr.link}
+                    href={`/go/${p.id}?mall=${encodeURIComponent(pr.mall_name)}&from=product`}
                     target="_blank"
-                    rel="noopener noreferrer"
+                    rel="nofollow noopener"
                     className="rounded-full bg-[#7B4BC4] px-3 py-2 text-xs font-bold text-white"
                   >
                     보러 가기
