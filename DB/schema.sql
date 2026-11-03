@@ -113,6 +113,17 @@ create table products (
 );
 create index products_category_idx on products(category) where is_active;
 
+-- 상품 이미지 (최대 10장, 1번이 대표. products.image_url과 같은 값)
+create table product_images (
+  product_id  bigint        not null references products(id) on delete cascade,
+  sort_order  smallint      not null check (sort_order between 1 and 10),
+  url         varchar(1000) not null check (url ~ '^https?://'),
+  created_at  timestamptz   not null default now(),
+  primary key (product_id, sort_order),
+  unique (product_id, url)
+);
+alter table product_images enable row level security;
+
 -- 이 상품이 판매하는 사이즈 목록
 create table product_sizes (
   product_id  bigint      not null references products(id) on delete cascade,
@@ -157,13 +168,15 @@ create table size_charts (
   hip_cm         numeric(4,1) check (hip_cm     between 20 and 120),  -- 엉덩이둘레
   outseam_cm     numeric(4,1) check (outseam_cm between 10 and 100),  -- 옆기장
   head_cm        numeric(4,1) check (head_cm    between 25 and 60),   -- 머리둘레
+  extra_measures jsonb        check (extra_measures is null or jsonb_typeof(extra_measures) = 'object'),
+                                                                       -- 기타 치수 {"밑둘레": 26}
   check ((brand_id is not null) <> (product_id is not null)),
   check (height_min_cm is null or height_min_cm < height_max_cm),
   constraint size_charts_months_chk
     check (month_min is null or month_max is null or month_min <= month_max),
   constraint size_charts_has_measure
     check (num_nonnulls(height_max_cm, month_max, chest_cm, sleeve_cm, length_cm,
-                        waist_cm, hip_cm, outseam_cm, head_cm) > 0)
+                        waist_cm, hip_cm, outseam_cm, head_cm, extra_measures) > 0)
 );
 create unique index size_charts_brand_uq   on size_charts(brand_id, size_label)   where brand_id   is not null;
 create unique index size_charts_product_uq on size_charts(product_id, size_label) where product_id is not null;

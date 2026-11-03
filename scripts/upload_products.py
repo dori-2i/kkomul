@@ -55,9 +55,44 @@ MEASURES = [
     ("머리둘레(cm)",   "head_cm",    25,  60),
 ]
 CHART_COLS = ["height_min_cm", "height_max_cm", "weight_min_kg", "weight_max_kg", "note",
-              "month_min", "month_max"] + [m[1] for m in MEASURES]
+              "month_min", "month_max"] + [m[1] for m in MEASURES] + ["extra_measures"]
+
+# 없어도 되는 칸 (예전 양식에는 없음)
+OPTIONAL_SIZE_COLS = ["기타치수"]
+
+# '밑둘레 26, 깊이:15cm' 같은 기타치수 한 조각
+EXTRA_RE = re.compile(r"^(.+?)\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(?:cm|센치|센티)?$", re.IGNORECASE)
+
+
+def parse_extra(raw):
+    """기타치수 칸을 {"밑둘레": 26.0} 형태로 바꿈. (결과, 오류 메시지 목록)"""
+    result, errors = {}, []
+    for part in re.split(r"[,;/\n]+", text(raw)):
+        part = part.strip()
+        if not part:
+            continue
+        m = EXTRA_RE.match(part)
+        if not m:
+            errors.append(f"기타치수는 '이름 숫자' 형식으로 적어 주세요: '{part}' (예: 밑둘레 26)")
+            continue
+        name, value = m.group(1).strip(" :="), float(m.group(2))
+        if len(name) > 20:
+            errors.append(f"기타치수 이름이 너무 길어요: '{name}'")
+        elif not 1 <= value <= 200:
+            errors.append(f"기타치수 '{name}' 값은 1~200 사이여야 해요: {value}")
+        elif name in result:
+            errors.append(f"기타치수 '{name}'이(가) 두 번 적혀 있어요.")
+        else:
+            result[name] = value
+    return (result or None), errors
 
 SKU_RE = re.compile(r"^[A-Za-z0-9_-]{1,30}$")
+MAX_IMAGES = 10
+
+
+def split_links(raw):
+    """이미지링크 칸에 줄바꿈·공백·쉼표로 구분해 적은 링크들을 목록으로"""
+    return [s.strip() for s in re.split(r"\s+|,(?=\s*https?://)", text(raw)) if s.strip()]
 
 
 # ---------------------------------------------------------------- 읽기 도우미
@@ -74,7 +109,7 @@ def is_example(sku, brand):
     return sku.upper().startswith("EX") or brand == "예시브랜드"
 
 
-def read_sheet(wb, name, expected):
+def read_sheet(wb, name, expected, optional=()):
     if name not in wb.sheetnames:
         sys.exit(f"'{name}' 시트가 없어요. 양식의 시트 이름을 바꾸지 말아 주세요.")
     ws = wb[name]
@@ -82,7 +117,7 @@ def read_sheet(wb, name, expected):
     missing = [c for c in expected if c not in header]
     if missing:
         sys.exit(f"'{name}' 시트에 머리글이 없어요: {', '.join(missing)}")
-    idx = {c: header.index(c) for c in expected}
+    idx = {c: header.index(c) for c in list(expected) + [c for c in optional if c in header]}
     for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         rec = {c: row[i] if i < len(row) else None for c, i in idx.items()}
         if all(text(v) == "" for v in rec.values()):
@@ -176,9 +211,13 @@ def parse(path):
         link = text(x["상품링크"])
         if not link.startswith(("http://", "https://")):
             ck.err("상품", r, "상품링크는 http로 시작해야 해요.")
-        image = text(x["이미지링크"]) or None
-        if image and not image.startswith(("http://", "https://")):
-            ck.err("상품", r, "이미지링크는 http로 시작해야 해요.")
+        images = split_links(x["이미지링크"])
+        bad = [u for u in images if not u.startswith(("http://", "https://"))]
+        if bad:
+            ck.err("상품", r, f"이미지링크는 http로 시작해야 해요: '{bad[0][:40]}'")
+        too_long = [u for u in images if len(u) > 1000]
+        if too_long:
+            ck.err("상품", r, "이미지링크 하나가 1000자를 넘어요.")
         sizes = [s for s in re.split(r"[,\s/]+", text(x["판매사이즈"])) if s]
         for s in sizes:
             if len(s) > 10:
@@ -193,12 +232,16 @@ def parse(path):
 
         p = products.setdefault(sku, {
             "sku": sku, "brand": brand or None, "name": name, "category": cat,
-            "list_price": list_price, "image": image, "sizes": [],
+            "list_price": list_price, "images": [], "sizes": [],
             "month_min": m_min, "month_max": m_max, "first_row": r,
         })
         if p["name"] != name or p["category"] != cat or p["brand"] != (brand or None):
             ck.err("상품", r, f"같은 상품코드({sku})인데 {p['first_row']}행과 상품명·브랜드·카테고리가 달라요.")
-        p["image"] = p["image"] or image
+        for u in images:
+            if u not in p["images"]:
+                p["images"].append(u)
+        if len(p["images"]) > MAX_IMAGES:
+            ck.err("상품", r, f"상품코드 {sku}의 이미지가 {MAX_IMAGES}장을 넘어요 ({len(p['images'])}장).")
         p["list_price"] = p["list_price"] or list_price
         for s in sizes:
             if s not in p["sizes"]:
@@ -213,7 +256,7 @@ def parse(path):
         seen[key] = pr["row"]
 
     charts = []
-    for r, x in read_sheet(wb, "사이즈표", SIZE_COLS):
+    for r, x in read_sheet(wb, "사이즈표", SIZE_COLS, OPTIONAL_SIZE_COLS):
         brand, sku = text(x["브랜드"]), text(x["상품코드"])
         if is_example(sku, brand) and (sku or brand):
             skipped += 1
@@ -242,8 +285,11 @@ def parse(path):
                "month_min": m_min, "month_max": m_max}
         for col, field, lo, hi in MEASURES:
             rec[field] = ck.decimal("사이즈표", r, col, x[col], False, lo, hi)
-        if all(rec[f] is None for f in ["height_max_cm", "month_max"] + [m[1] for m in MEASURES]):
-            ck.err("사이즈표", r, "키최대, 개월최대, 부위별 치수 중 하나는 적어 주세요.")
+        rec["extra_measures"], extra_errors = parse_extra(x.get("기타치수"))
+        for e in extra_errors:
+            ck.err("사이즈표", r, e)
+        if all(rec[f] is None for f in ["height_max_cm", "month_max", "extra_measures"] + [m[1] for m in MEASURES]):
+            ck.err("사이즈표", r, "키최대, 개월최대, 부위별 치수, 기타치수 중 하나는 적어 주세요.")
         charts.append(rec)
 
     return products, prices, charts, skipped, ck.errors
@@ -263,7 +309,7 @@ def brand_id(cur, name, cache):
 
 
 def save(conn, products, prices, charts):
-    stats = {"상품": 0, "가격(신규)": 0, "가격(이미 있음)": 0, "사이즈표": 0}
+    stats = {"상품": 0, "이미지": 0, "가격(신규)": 0, "가격(이미 있음)": 0, "사이즈표": 0}
     brands, ids = {}, {}
     with conn.cursor() as cur:
         for p in products.values():
@@ -276,9 +322,16 @@ def save(conn, products, prices, charts):
                      month_min = excluded.month_min, month_max = excluded.month_max
                    returning id""",
                 (p["sku"], brand_id(cur, p["brand"], brands), p["name"], p["category"],
-                 p["list_price"], p["image"], p["month_min"], p["month_max"]))
+                 p["list_price"], p["images"][0] if p["images"] else None,
+                 p["month_min"], p["month_max"]))
             ids[p["sku"]] = cur.fetchone()[0]
             stats["상품"] += 1
+            if p["images"]:
+                cur.execute("delete from product_images where product_id = %s", (ids[p["sku"]],))
+                for n, u in enumerate(p["images"], start=1):
+                    cur.execute("insert into product_images(product_id, sort_order, url) values (%s, %s, %s)",
+                                (ids[p["sku"]], n, u))
+                stats["이미지"] += len(p["images"])
             if p["sizes"]:
                 cur.execute("delete from product_sizes where product_id = %s", (ids[p["sku"]],))
                 for s in p["sizes"]:
@@ -304,8 +357,10 @@ def save(conn, products, prices, charts):
         cols_sql = ", ".join(CHART_COLS)
         marks = ", ".join(["%s"] * (len(CHART_COLS) + 1))
         updates = ", ".join(f"{c} = excluded.{c}" for c in CHART_COLS)
+        from psycopg.types.json import Jsonb
         for c in charts:
-            vals = (c["size"], *[c[k] for k in CHART_COLS])
+            vals = (c["size"], *[Jsonb(c[k]) if k == "extra_measures" and c[k] else c[k]
+                                 for k in CHART_COLS])
             if c["sku"]:
                 pid = ids.get(c["sku"])
                 if pid is None:
@@ -334,6 +389,9 @@ def main():
     ap.add_argument("xlsx", help="작성한 엑셀 파일 경로")
     ap.add_argument("--dry-run", action="store_true", help="검사만 하고 저장하지 않음")
     args = ap.parse_args()
+
+    if not os.path.isfile(args.xlsx):
+        sys.exit(f"파일을 찾을 수 없어요: {args.xlsx}\n경로와 파일 이름을 확인해 주세요. (Tab 키로 자동 완성하면 편해요)")
 
     products, prices, charts, skipped, errors = parse(args.xlsx)
     print(f"읽은 내용: 상품 {len(products)}개, 판매처별 가격 {len(prices)}줄, 사이즈표 {len(charts)}줄"
